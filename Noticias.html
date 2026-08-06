@@ -1,0 +1,1386 @@
+<!DOCTYPE html>
+<!--
+  ============================================================
+  KAFFEE FÜR ALLE — Leitor de Jornais (versão didática / TCC)
+  ============================================================
+  O QUE É: uma página web que mostra as manchetes mais recentes
+           de vários jornais brasileiros, num visual de cafeteria.
+
+  COMO FUNCIONA (resumo de 3 linhas):
+    1. O usuário escolhe um jornal (ou uma categoria).
+    2. O JavaScript busca as notícias via uma API (rss2json).
+    3. As manchetes aparecem na tela, da mais nova para a mais velha.
+
+  TECNOLOGIAS: HTML (estrutura) + CSS (visual) + JavaScript (lógica).
+  NÃO usa React, não usa framework — só o "puro" da web.
+  ============================================================
+-->
+<html lang="pt-BR">
+
+<head>
+  <!-- Metadados: codificação de caracteres e configuração de tela -->
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Kaffee Für Alle — Jornais</title>
+  <meta name="description" content="Leia as manchetes dos principais jornais enquanto espera seu café." />
+
+  <!--
+    FONTES — Importamos duas fontes do Google:
+    • Fraunces  → fonte serifada, usada nos títulos (visual elegante)
+    • Poppins   → fonte sem serifa, usada no corpo do texto (visual limpo)
+  -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,700;9..144,900&family=Poppins:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+
+  <style>
+    /* ============================================================
+       PARTE 1 — CSS (a aparência da página)
+       ============================================================
+       O CSS funciona assim: você cria "regras" que dizem
+       "todo elemento com a classe X deve ter a cor Y".
+       Exemplo: .card { background: cinza; } → todo card fica cinza.
+       ============================================================ */
+
+    /* ----------------------------------------------------------
+       1.1) VARIÁVEIS DE COR
+       ----------------------------------------------------------
+       Em vez de espalhar códigos de cor pelo arquivo inteiro,
+       definimos tudo aqui. Se quiser mudar o marrom, muda UMA
+       linha aqui e todo o site se atualiza.
+
+       HSL = Matiz (cor), Saturação (intensidade), Luminosidade.
+       Ex: hsl(17, 46%, 20%) = marrom escuro.
+       ---------------------------------------------------------- */
+    :root {
+      --page:        hsl(40, 25%, 99%);  /* fundo creme da página     */
+      --cocoa:       hsl(17, 46%, 20%);  /* marrom escuro (textos)    */
+      --cocoa-soft:  hsl(20, 28%, 44%);  /* marrom médio (subtextos)  */
+      --pebble:      hsl(0, 0%, 94%);     /* cinza claro (cards)       */
+      --pebble-deep: hsl(0, 0%, 91%);     /* cinza (hover dos cards)   */
+      --tan:         hsl(14, 30%, 68%);  /* bege (detalhes)           */
+      --azure:       hsl(214, 33%, 55%); /* azul (item selecionado)   */
+      --azure-soft:  hsl(217, 21%, 71%); /* azul claro (borda ativa)  */
+      --search:      hsl(14, 59%, 30%);  /* marrom escuro (botões)    */
+    }
+
+    /* ----------------------------------------------------------
+       1.2) RESET — Remove as margens padrão do navegador.
+       box-sizing: border-box faz com que padding e border
+       NÃO aumentem o tamanho do elemento (evita layout quebrado).
+       ---------------------------------------------------------- */
+    *, *::before, *::after { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; }
+
+    /* ----------------------------------------------------------
+       1.3) BODY — O "fundo" de tudo.
+       Fundo creme, texto marrom, fonte Poppins.
+       ---------------------------------------------------------- */
+    body {
+      background: var(--page);
+      color: var(--cocoa);
+      font-family: 'Poppins', sans-serif;
+      min-height: 100vh;
+      padding: 24px 12px;
+    }
+    a { color: inherit; text-decoration: none; }
+    img { max-width: 100%; display: block; }
+
+    /* ----------------------------------------------------------
+       1.4) CONTAINER — Centraliza o conteúdo com largura máxima.
+       margin: 0 auto = centraliza horizontalmente.
+       ---------------------------------------------------------- */
+    .container { max-width: 1080px; margin: 0 auto; }
+
+    /* ----------------------------------------------------------
+       1.5) CARTÃO PRINCIPAL (.frame)
+       O "cartão branco" que envolve todo o conteúdo.
+       Sombra marrom suave dá profundidade (efeito de papel).
+       ---------------------------------------------------------- */
+    .frame {
+      background: #fff;
+      border: 1px solid hsl(0, 0%, 92%);
+      border-radius: 16px;
+      padding: 22px;
+      box-shadow: 0 4px 50px hsla(17, 46%, 20%, 0.10);
+    }
+
+    /* Responsividade: em telas maiores, aumenta o padding */
+    @media (min-width: 640px)  { body { padding: 40px 24px; } .frame { padding: 34px; } }
+    @media (min-width: 1024px) { body { padding: 56px 40px; } .frame { padding: 48px; } }
+
+    /* ----------------------------------------------------------
+       1.6) CLASSES DE FONTE — Atalhos para trocar a fonte.
+       .font-title = Fraunces (títulos)
+       .font-body  = Poppins (corpo)
+       ---------------------------------------------------------- */
+    .font-title { font-family: 'Fraunces', Georgia, serif; }
+
+    /* ----------------------------------------------------------
+       1.7) CABEÇALHO + TÍTULO
+       "Principais Jornais" em Fraunces, bem grande.
+       A setinha (chev) faz uma animação suave de vai-e-vem.
+       ---------------------------------------------------------- */
+    .head { display: flex; align-items: center; gap: 12px; }
+    .head h1 {
+      margin: 0;
+      font-size: clamp(1.9rem, 4.6vw, 3.6rem);
+      font-weight: 900;
+      color: var(--cocoa);
+    }
+    .head .chev {
+      width: 34px; height: 34px;
+      color: var(--cocoa-soft);
+      animation: nudge 2.2s ease-in-out infinite;
+    }
+    @keyframes nudge {
+      0%, 100% { transform: translateX(0); }
+      50%      { transform: translateX(4px); }
+    }
+
+    /* ----------------------------------------------------------
+       1.8) DIVISOR — Linha fina que separa seções.
+       Gradiente: começa visível e some na direita.
+       ---------------------------------------------------------- */
+    .divider {
+      height: 1px;
+      margin: 14px 0 26px;
+      background: linear-gradient(90deg, var(--pebble-deep), transparent);
+    }
+
+    /* ----------------------------------------------------------
+       1.9) INTRO — Texto de instrução + imagem.
+       No desktop: 2 colunas lado a lado. No celular: empilhado.
+       ---------------------------------------------------------- */
+    .intro {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 22px;
+      align-items: center;
+      margin-bottom: 34px;
+    }
+    @media (min-width: 768px) {
+      .intro { grid-template-columns: 1fr 1fr; gap: 32px; }
+    }
+    .intro p {
+      margin: 0;
+      font-family: 'Fraunces', serif;
+      font-size: clamp(1.15rem, 2.6vw, 1.9rem);
+      color: var(--cocoa);
+    }
+    .intro .hero {
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 12px 32px hsla(17, 46%, 20%, 0.12);
+    }
+    .intro .hero img {
+      width: 100%;
+      height: 200px;
+      object-fit: cover;
+    }
+
+    /* ----------------------------------------------------------
+       1.10) CHIPS DE CATEGORIA — Botões arredondados de filtro.
+             O ativo fica preenchido de marrom com texto branco.
+       ---------------------------------------------------------- */
+    .chips { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+    .chip {
+      cursor: pointer;
+      font-family: 'Poppins', sans-serif;
+      text-transform: uppercase;
+      font-size: .72rem;
+      padding: 8px 14px;
+      border-radius: 9999px;
+      border: 1px solid hsl(0, 0%, 85%);
+      background: transparent;
+      color: var(--cocoa-soft);
+      transition: all .2s;
+    }
+    .chip:hover { border-color: var(--cocoa); }
+    .chip.active {
+      background: var(--cocoa);
+      color: #fff;
+      border-color: var(--cocoa);
+    }
+
+    /* ----------------------------------------------------------
+       1.11) GRID DE JORNAIS — 1 coluna no celular, 2 no tablet,
+             3 no desktop. CSS Grid organiza automaticamente.
+       ---------------------------------------------------------- */
+    .grid { display: grid; grid-template-columns: 1fr; gap: 14px; }
+    @media (min-width: 640px)  { .grid { grid-template-columns: 1fr 1fr; } }
+    @media (min-width: 1024px) { .grid { grid-template-columns: 1fr 1fr 1fr; } }
+
+    /* ----------------------------------------------------------
+       1.12) CARD DE JORNAL — Cada jornal vira um "cartãozinho".
+             Fundo cinza (pebble). No hover: sobe e fica com borda azul.
+       ---------------------------------------------------------- */
+    .card {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      padding: 16px;
+      background: var(--pebble);
+      border: 2px solid transparent;
+      border-radius: 12px;
+      cursor: pointer;
+      transition: all .22s;
+    }
+    .card:hover {
+      transform: translateY(-3px);
+      background: var(--pebble-deep);
+      border-color: var(--azure-soft);
+      box-shadow: 0 12px 32px hsla(17, 46%, 20%, 0.10);
+    }
+    .card .logo {
+      width: 60px; height: 60px;
+      border-radius: 50%;
+      background: #fff;
+      border: 2px solid hsl(0, 0%, 90%);
+      overflow: hidden;
+      display: grid;
+      place-items: center;
+      font-family: 'Fraunces', serif;
+      font-weight: 700;
+      font-size: 1.4rem;
+      color: var(--cocoa);
+    }
+    .card .logo img { width: 100%; height: 100%; object-fit: contain; padding: 6px; }
+    .card .name {
+      font-family: 'Fraunces', serif;
+      font-weight: 700;
+      color: var(--cocoa);
+    }
+    .card .cta {
+      font-size: .85rem;
+      color: var(--cocoa-soft);
+      margin-top: 4px;
+    }
+
+    /* ----------------------------------------------------------
+       1.13) LISTA DE MANCHETES — Cada notícia é um bloco.
+             No hover, desliza um pouco para a direita.
+       ---------------------------------------------------------- */
+    .headlines {
+      display: flex;
+      flex-direction: column;
+      border-top: 1px solid var(--pebble-deep);
+    }
+    .headline {
+      display: block;
+      padding: 16px 0;
+      border-bottom: 1px solid var(--pebble-deep);
+      transition: background .2s, padding-left .2s;
+    }
+    .headline:hover { background: var(--pebble); padding-left: 12px; }
+    .headline h3 {
+      margin: 0;
+      font-family: 'Fraunces', serif;
+      font-size: 1.15rem;
+      color: var(--cocoa);
+    }
+    .headline p {
+      margin: 6px 0 0;
+      font-size: .9rem;
+      color: var(--cocoa-soft);
+    }
+    .headline .meta {
+      margin-top: 6px;
+      font-size: .68rem;
+      text-transform: uppercase;
+      color: hsl(20, 28%, 60%);
+    }
+    .headline .paper-tag {
+      background: var(--pebble);
+      padding: 2px 8px;
+      border-radius: 9999px;
+      margin-right: 6px;
+    }
+
+    /* ----------------------------------------------------------
+       1.14) BOTÕES — .btn (com borda) e .btn.solid (preenchido).
+       ---------------------------------------------------------- */
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 18px;
+      border-radius: 9999px;
+      border: 1px solid var(--cocoa);
+      color: var(--cocoa);
+      background: transparent;
+      font-family: 'Poppins', sans-serif;
+      text-transform: uppercase;
+      font-size: .72rem;
+      cursor: pointer;
+      transition: all .2s;
+    }
+    .btn:hover { background: var(--cocoa); color: #fff; }
+    .btn.solid { background: var(--search); color: #fff; border-color: var(--search); }
+    .btn.solid:hover { background: var(--cocoa); }
+
+    /* ----------------------------------------------------------
+       1.15) BOTÃO VOLTAR — Seta + texto pequeno.
+       ---------------------------------------------------------- */
+    .back {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--cocoa-soft);
+      font-size: .72rem;
+      text-transform: uppercase;
+      margin-bottom: 16px;
+      cursor: pointer;
+    }
+    .back:hover { color: var(--cocoa); }
+
+    /* ----------------------------------------------------------
+       1.16) AVISO (.warn) — Caixa para mensagens de erro/aviso.
+       ---------------------------------------------------------- */
+    .warn {
+      background: var(--pebble);
+      border: 1px solid var(--pebble-deep);
+      color: var(--cocoa);
+      padding: 12px 14px;
+      border-radius: 10px;
+      margin-bottom: 16px;
+    }
+
+    /* ----------------------------------------------------------
+       1.17) LOADER (.skeleton) — Efeito "shimmer" (brilho que
+             desliza) enquanto as notícias carregam.
+       ---------------------------------------------------------- */
+    .skeleton {
+      border-radius: 10px;
+      background: linear-gradient(90deg, var(--pebble), var(--pebble-deep), var(--pebble));
+      background-size: 800px 100%;
+      animation: shimmer 1.6s infinite linear;
+    }
+    @keyframes shimmer {
+      0%   { background-position: -400px 0; }
+      100% { background-position: 400px 0; }
+    }
+
+    /* ----------------------------------------------------------
+       1.18) RODAPÉ — Texto pequeno no fim da página.
+       ---------------------------------------------------------- */
+    .foot {
+      margin-top: 42px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: var(--cocoa-soft);
+      font-size: .85rem;
+    }
+    .link-admin {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      margin-top: 20px;
+      color: hsl(20, 28%, 60%);
+      font-size: .8rem;
+      text-transform: uppercase;
+    }
+    .link-admin:hover { color: var(--cocoa); }
+
+    /* ----------------------------------------------------------
+       1.19) PAINEL ADMIN — Formulários e listas do painel do dono.
+       ---------------------------------------------------------- */
+    .admin-header {
+      display: flex;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-bottom: 16px;
+    }
+    .admin-header h1 {
+      margin: 0;
+      font-family: 'Fraunces', serif;
+      font-weight: 900;
+      color: var(--cocoa);
+    }
+    form.admin-form { display: grid; gap: 12px; }
+    .row { display: grid; gap: 12px; }
+    @media (min-width: 640px) { .row.two { grid-template-columns: 1fr 1fr; } }
+
+    label {
+      display: block;
+      font-size: .68rem;
+      text-transform: uppercase;
+      color: var(--cocoa-soft);
+      margin-bottom: 6px;
+    }
+    input, select, textarea {
+      width: 100%;
+      padding: 10px 12px;
+      background: var(--pebble);
+      color: var(--cocoa);
+      border: 1px solid var(--pebble-deep);
+      border-radius: 10px;
+      font-family: 'Poppins', sans-serif;
+      font-size: .95rem;
+      outline: none;
+    }
+    input:focus { border-color: var(--azure-soft); background: #fff; }
+
+    .checkboxes { display: flex; flex-wrap: wrap; gap: 8px; }
+    .checkboxes label {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 12px;
+      border: 1px solid var(--pebble-deep);
+      border-radius: 9999px;
+      cursor: pointer;
+      text-transform: none;
+      font-size: .85rem;
+    }
+    .checkboxes input { width: auto; }
+    .checkboxes label.checked {
+      background: var(--pebble);
+      border-color: var(--cocoa);
+      color: var(--cocoa);
+    }
+
+    .admin-list { display: grid; gap: 10px; margin-top: 16px; }
+    .admin-item {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 12px;
+      background: var(--pebble);
+      border: 1px solid var(--pebble-deep);
+      border-radius: 12px;
+    }
+    .admin-item .logo-mini {
+      width: 44px; height: 44px;
+      border-radius: 50%;
+      background: #fff;
+      display: grid;
+      place-items: center;
+      overflow: hidden;
+      font-family: 'Fraunces', serif;
+      font-weight: 700;
+      color: var(--cocoa);
+    }
+    .admin-item .logo-mini img { width: 100%; height: 100%; object-fit: contain; padding: 4px; }
+    .admin-item .meta { flex: 1; }
+    .admin-item .meta .n { font-family: 'Fraunces', serif; font-weight: 700; color: var(--cocoa); }
+    .admin-item .meta .s { font-size: .85rem; color: var(--cocoa-soft); word-break: break-all; }
+    .icon-btn {
+      background: transparent;
+      border: 1px solid var(--pebble-deep);
+      border-radius: 8px;
+      width: 34px; height: 34px;
+      display: grid;
+      place-items: center;
+      cursor: pointer;
+      color: var(--cocoa-soft);
+    }
+    .icon-btn:hover { background: var(--cocoa); color: #fff; }
+    .icon-btn.danger:hover { background: hsl(0, 70%, 45%); border-color: hsl(0, 70%, 45%); }
+
+    /* Animação de "subir e aparecer" para os cards */
+    @keyframes fadeUp {
+      from { opacity: 0; transform: translateY(12px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+
+    /* Scrollbar personalizada */
+    ::selection { background: var(--cocoa); color: #fff; }
+    ::-webkit-scrollbar { width: 10px; }
+    ::-webkit-scrollbar-track { background: var(--page); }
+    ::-webkit-scrollbar-thumb { background: var(--pebble-deep); border-radius: 8px; }
+  </style>
+</head>
+
+<body>
+  <!--
+    O ÚNICO elemento HTML fixo no body.
+    Tudo o resto é criado dinamicamente pelo JavaScript abaixo
+    e injetado dentro desta div.
+  -->
+  <div class="container" id="app"></div>
+
+  <script>
+    /* ============================================================
+       PARTE 2 — JAVASCRIPT (a lógica da página)
+       ============================================================
+       O JavaScript faz 3 coisas principais:
+         A) Guarda a lista de jornais (com nome, site e feed RSS).
+         B) Busca as notícias de cada jornal via uma API (rss2json).
+         C) Mostra tudo na tela, trocando de "página" sem recarregar.
+
+       O código está dividido em seções, numeradas de A a H.
+       ============================================================ */
+
+
+    /* ============================================================
+       SEÇÃO A — CONFIGURAÇÃO E DADOS INICIAIS
+       ============================================================
+       Aqui definimos: chaves do localStorage, senha padrão,
+       imagem de capa, e a LISTA de jornais com seus feeds RSS.
+       ============================================================ */
+
+    // Chaves usadas para guardar dados no navegador (localStorage)
+    const CHAVE_SENHA     = 'cafe_owner_password';  // senha do admin
+    const CHAVE_SESSAO    = 'cafe_owner_session';   // "1" se logado
+    const CHAVE_JORNAIS   = 'cafe_newspapers';       // lista de jornais
+    const SENHA_PADRAO    = 'cafe123';              // troque após o 1º login
+
+    // Imagem de capa (café + jornal) do Unsplash (banco de imagens grátis)
+    const IMAGEM_CAPA = 'https://images.unsplash.com/photo-1495474472287-4d71bcdd2085?auto=format&fit=crop&w=1200&q=80';
+
+    /*
+      A LISTA DE JORNAIS — Cada jornal é um objeto com 5 campos:
+        id         → identificador único (usado na URL: #/jornal/folha-sp)
+        name       → nome que aparece na tela
+        site       → link do site oficial
+        rss        → URL do feed RSS (É AQUI que a API busca as notícias)
+        categories → em quais categorias este jornal se encaixa
+    */
+    const JORNAIS_PADRAO = [
+      {
+        id: 'folha-sp',
+        name: 'Folha de São Paulo',
+        site: 'https://www.folha.uol.com.br/',
+        rss: 'https://feeds.folha.uol.com.br/emcimadahora/rss091.xml',
+        categories: ['Geral', 'Política', 'Economia']
+      },
+      {
+        id: 'g1-globo',
+        name: 'G1 Globo',
+        site: 'https://g1.globo.com/',
+        rss: 'https://g1.globo.com/rss/g1/',
+        categories: ['Geral', 'Política', 'Economia', 'Esportes']
+      },
+      {
+        id: 'tribuna',
+        name: 'Tribuna',
+        site: 'https://tribunapr.com.br/',
+        rss: 'https://tribunapr.com.br/feed/',
+        categories: ['Geral', 'Política']
+      },
+      {
+        id: 'espn-brasil',
+        name: 'ESPN Brasil',
+        site: 'https://www.espn.com.br/',
+        rss: 'https://www.espn.com.br/espn/rss/news',
+        categories: ['Esportes']
+      },
+      {
+        id: 'folha-litoral',
+        name: 'Folha do Litoral News',
+        site: 'https://folhadolitoralnews.com.br/',
+        rss: 'https://folhadolitoralnews.com.br/feed/',
+        categories: ['Geral']
+      },
+      {
+        id: 'investnews',
+        name: 'InvestNews',
+        site: 'https://investnews.com.br/',
+        rss: 'https://investnews.com.br/feed/',
+        categories: ['Economia']
+      },
+    ];
+
+    // Categorias que aparecem como botões de filtro
+    const CATEGORIAS = ['Todos', 'Esportes', 'Economia', 'Política'];
+
+    /*
+      PALAVRAS-CHAVE POR CATEGORIA
+      Quando o usuário clica em "Política", o código pega todas as
+      manchetes e SÓ mostra as que contêm alguma destas palavras.
+      É um filtro simples por texto (não usa IA, é só comparação).
+    */
+    const PALAVRAS_CHAVE = {
+      'Esportes': ['futebol', 'esporte', 'jogo', 'campeonato', 'copa', 'nba', 'gol', 'seleção', 'olímp', 'flamengo', 'palmeiras', 'corinthians', 'santos', 'vôlei', 'tênis', 'basquete'],
+      'Economia': ['economia', 'mercado', 'bolsa', 'dólar', 'dolar', 'inflação', 'juros', 'pib', 'investimento', 'ações', 'bitcoin', 'imposto', 'selic', 'câmbio', 'desemprego'],
+      'Política': ['polític', 'presidente', 'congresso', 'senado', 'câmara', 'deputado', 'governo', 'ministro', 'stf', 'supremo', 'eleição', 'partido', 'lula', 'bolsonaro', 'tse', 'pec'],
+    };
+
+
+    /* ============================================================
+       SEÇÃO B — LOCALSTORAGE (salvar dados no navegador)
+       ============================================================
+       localStorage = "memória" do navegador. Guarda dados mesmo
+       depois de fechar a página. Usamos para:
+         • guardar a lista de jornais (se o dono adicionar um novo)
+         • guardar a senha do painel admin
+       sessionStorage = igual, mas some ao fechar a aba (usado
+       para saber se o dono está logado na sessão atual).
+       ============================================================ */
+
+    // Lê a lista de jornais do localStorage. Se não existir, usa a padrão.
+    function carregarJornais() {
+      try {
+        const dados = localStorage.getItem(CHAVE_JORNAIS);
+        if (dados) return JSON.parse(dados);  // converte texto → objeto
+      } catch (e) { }
+      // Se chegou aqui, não havia dados salvos → salva os padrão
+      localStorage.setItem(CHAVE_JORNAIS, JSON.stringify(JORNAIS_PADRAO));
+      return JORNAIS_PADRAO;
+    }
+
+    // Salva a lista de jornais no localStorage
+    function salvarJornais(lista) {
+      localStorage.setItem(CHAVE_JORNAIS, JSON.stringify(lista));
+    }
+
+    // Funções de senha e login do painel admin
+    function obterSenha()       { return localStorage.getItem(CHAVE_SENHA) || SENHA_PADRAO; }
+    function definirSenha(p)    { localStorage.setItem(CHAVE_SENHA, p); }
+    function estaLogado()       { return sessionStorage.getItem(CHAVE_SESSAO) === '1'; }
+    function fazerLogin(senha)  {
+      if (senha === obterSenha()) {
+        sessionStorage.setItem(CHAVE_SESSAO, '1');
+        return true;
+      }
+      return false;
+    }
+    function fazerLogout() { sessionStorage.removeItem(CHAVE_SESSAO); }
+
+    /*
+      FAVICON — Pega o "ícone" do site do jornal via Google.
+      Ex: se o site é "g1.globo.com", retorna o ícone da Globo.
+      Usamos para mostrar a logomarca no card de cada jornal.
+    */
+    function iconeDoSite(site) {
+      try {
+        const url = new URL(site);
+        return 'https://www.google.com/s2/favicons?domain=' + url.hostname + '&sz=128';
+      } catch (e) {
+        return '';
+      }
+    }
+
+
+    /* ============================================================
+       SEÇÃO C — ÍCONES SVG
+       ============================================================
+       Os ícones (seta, lixeira, chave, etc.) são desenhados em
+       SVG (vetores). Em vez de baixar um arquivo de imagem para
+       cada ícone, guardamos o "caminho" do desenho aqui.
+       ============================================================ */
+    const icones = {
+      chevron: '<path d="m9 18 6-6-6-6"/>',
+      external:'<path d="M15 3h6v6"/><path d="M10 14 21 3"/><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>',
+      back:    '<path d="m12 19-7-7 7-7"/><path d="M19 12H5"/>',
+      news:    '<path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Z"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/>',
+      plus:    '<path d="M5 12h14"/><path d="M12 5v14"/>',
+      trash:   '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>',
+      logout:  '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/>',
+      key:     '<circle cx="7.5" cy="15.5" r="5.5"/><path d="m21 2-9.6 9.6"/><path d="m15.5 7.5 3 3L22 7l-3-3"/>',
+    };
+
+    // Cria o elemento <svg> completo a partir do nome do ícone
+    function criarIcone(nome) {
+      const caminho = icones[nome] || '';
+      return '<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + caminho + '</svg>';
+    }
+
+
+    /* ============================================================
+       SEÇÃO D — FUNÇÕES UTILITÁRIAS (atalhos)
+       ============================================================
+       Funções pequenas que usamos muitas vezes no código.
+       ============================================================ */
+
+    // $ = atalho para document.querySelector (busca 1 elemento)
+    function $(seletor) { return document.querySelector(seletor); }
+
+    // $$ = atalho para querySelectorAll (busca vários elementos)
+    function $$(seletor) { return Array.from(document.querySelectorAll(seletor)); }
+
+    /*
+      el() — Cria um elemento HTML de forma programática.
+      Em vez de escrever <div class="card"> no HTML, fazemos:
+        el('div', {class:'card'}, 'texto aqui')
+      Isso é mais flexível porque podemos criar elementos
+      dinamicamente com JavaScript.
+    */
+    function el(tag, attrs = {}, ...children) {
+      const elemento = document.createElement(tag);
+
+      // Aplica cada atributo (class, href, onclick, etc.)
+      Object.entries(attrs).forEach(([chave, valor]) => {
+        if (chave === 'class') elemento.className = valor;
+        else if (chave.startsWith('on') && typeof valor === 'function')
+          elemento.addEventListener(chave.slice(2).toLowerCase(), valor);
+        else if (valor != null) elemento.setAttribute(chave, valor);
+      });
+
+      // Adiciona os filhos (texto ou outros elementos)
+      children.flat().forEach(c => {
+        elemento.append(c && c.nodeType ? c : document.createTextNode(c ?? ''));
+      });
+
+      return elemento;
+    }
+
+    // Remove tags HTML de um texto (ex: "<p>oi</p>" → "oi")
+    function limparHTML(texto) {
+      const div = document.createElement('div');
+      div.innerHTML = texto;
+      return (div.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+
+    // Formata uma data para o padrão brasileiro: "04 de ago., 10:30"
+    function formatarData(dataStr) {
+      if (!dataStr) return '';
+      const d = new Date(dataStr);
+      if (isNaN(d)) return dataStr;
+      return d.toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+    }
+
+    // Cria um "slug" (texto amigável para URL): "Folha de SP" → "folha-de-sp"
+    function criarSlug(texto) {
+      return texto.toLowerCase()
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')  // remove acentos
+        .replace(/[^a-z0-9]+/g, '-')                       // troca espaços por -
+        .replace(/^-|-$/g, '');                            // remove - do início/fim
+    }
+
+
+    /* ============================================================
+       SEÇÃO E — ROTEADOR (troca de "página" sem recarregar)
+       ============================================================
+       Usamos "hash routing": a URL muda depois do #.
+       Exemplos:
+         site.com/#/              → tela inicial (grid de jornais)
+         site.com/#/jornal/folha  → manchetes da Folha
+         site.com/#/admin         → painel do dono
+
+       Quando o hash muda, a função render() é chamada e decide
+       qual tela mostrar. A página NÃO recarrega — é instantâneo.
+       ============================================================ */
+
+    // Escuta mudanças na URL (quando o # muda)
+    window.addEventListener('hashchange', render);
+    // Escuta o carregamento inicial da página
+    window.addEventListener('DOMContentLoaded', render);
+
+    // Função principal: olha a URL e decide qual tela desenhar
+    function render() {
+      const app = $('#app');
+      const hash = location.hash || '#/';
+
+      if (hash.startsWith('#/jornal/')) {
+        // Extrai o id do jornal da URL: "#/jornal/folha-sp" → "folha-sp"
+        const id = hash.replace('#/jornal/', '');
+        return mostrarJornal(app, id);
+      }
+
+      if (hash.startsWith('#/admin')) {
+        return mostrarPainel(app);
+      }
+
+      // Se não for nenhum dos acima, mostra a tela inicial
+      return mostrarGrade(app);
+    }
+
+
+    /* ============================================================
+       SEÇÃO F — TELA 1: GRADE DE JORNAIS (página inicial)
+       ============================================================
+       Mostra:
+         • Título "Principais Jornais"
+         • Imagem de capa
+         • Botões de categoria (Todos, Esportes, Economia, Política)
+         • Cards de cada jornal (ou manchetes filtradas por categoria)
+       ============================================================ */
+    function mostrarGrade(app) {
+      app.innerHTML = '';
+      const categoriaAtual = { valor: 'Todos' };  // objeto para poder mudar de dentro
+      const jornais = carregarJornais();
+
+      // Cria o cartão branco principal
+      const frame = el('div', { class: 'frame' });
+
+      // Cabeçalho com título e setinha animada
+      frame.append(
+        el('div', { class: 'head' },
+          el('h1', { class: 'font-title' }, 'Principais Jornais'),
+          criarIconeSpan(criarIcone('chevron'), 'chev')
+        ),
+        el('div', { class: 'divider' })
+      );
+
+      // Texto de instrução + imagem de capa
+      const intro = el('div', { class: 'intro' });
+      intro.append(
+        el('p', {}, 'Aperte algum link e você será encaminhado para o jornal'),
+        el('div', { class: 'hero' },
+          el('img', { src: IMAGEM_CAPA, alt: 'Jornais e café', loading: 'lazy' })
+        )
+      );
+      frame.append(intro);
+
+      // Botões de categoria (chips)
+      const chips = el('div', { class: 'chips' });
+      CATEGORIAS.forEach(cat => {
+        const botao = el('button', {
+          class: 'chip' + (cat === categoriaAtual.valor ? ' active' : ''),
+          onclick: () => selecionarCategoria(cat)
+        }, cat);
+        chips.append(botao);
+      });
+      frame.append(chips);
+
+      // Área onde os cards ou manchetes aparecem
+      const areaConteudo = el('div', { id: 'grid-content' });
+      frame.append(areaConteudo);
+
+      // Rodapé
+      frame.append(
+        el('div', { class: 'foot' },
+          criarIconeSpan(criarIcone('news'), 'icon'),
+          el('span', {}, 'Enquanto espera seu café, aproveite para ler as notícias do dia.')
+        ),
+        el('a', { href: '#/admin', class: 'link-admin' },
+          criarIconeSpan(criarIcone('key'), 'icon'), ' Painel do dono'
+        )
+      );
+
+      app.append(frame);
+      desenharConteudo();
+
+      // Quando o usuário clica numa categoria
+      function selecionarCategoria(cat) {
+        categoriaAtual.valor = cat;
+        $$('.chip', chips).forEach(c =>
+          c.classList.toggle('active', c.textContent === cat)
+        );
+        desenharConteudo();
+      }
+
+      // Desenha os cards OU as manchetes filtradas
+      async function desenharConteudo() {
+        areaConteudo.innerHTML = '';
+
+        if (categoriaAtual.valor === 'Todos') {
+          // MODO "Todos" → mostra os cards de jornais
+          const grade = el('div', { class: 'grid' });
+          jornais.forEach((jornal, indice) => {
+            const card = el('a', {
+              class: 'card',
+              href: '#/jornal/' + jornal.id,
+              style: 'animation-delay:' + (indice * 70) + 'ms'
+            });
+
+            // Logo do jornal (ícone do site). Se falhar, mostra a 1ª letra.
+            const logo = el('div', { class: 'logo' });
+            const img = el('img', { src: iconeDoSite(jornal.site), alt: jornal.name, loading: 'lazy' });
+            img.onerror = () => { logo.textContent = jornal.name.charAt(0).toUpperCase(); };
+            logo.append(img);
+
+            card.append(logo, el('div', { class: 'info' },
+              el('div', { class: 'name' }, jornal.name),
+              el('div', { class: 'cta' }, 'Ver manchetes  →')
+            ));
+            grade.append(card);
+          });
+          areaConteudo.append(grade);
+
+        } else {
+          // MODO CATEGORIA → busca manchetes de vários jornais e filtra
+          areaConteudo.append(
+            el('div', { class: 'skeleton', style: 'height:80px;margin-bottom:10px' }),
+            el('div', { class: 'skeleton', style: 'height:80px;margin-bottom:10px' }),
+            el('div', { class: 'skeleton', style: 'height:80px' })
+          );
+
+          // Pega só os jornais que cobrem esta categoria
+          const jornaisRelevantes = jornais.filter(j =>
+            (j.categories || []).includes(categoriaAtual.valor)
+          );
+          const fontes = jornaisRelevantes.length ? jornaisRelevantes : jornais;
+
+          // Busca as manchetes de todos os jornais AO MESMO TEMPO
+          const resultados = await Promise.all(fontes.map(buscarManchetes));
+
+          // Junta todas as manchetes numa só lista
+          let todasManchetes = [];
+          resultados.forEach((res, i) => {
+            if (!res || !res.items) return;
+            res.items.forEach(item => {
+              todasManchetes.push({ ...item, paper: fontes[i] });
+            });
+          });
+
+          // FILTRA por palavras-chave da categoria
+          const palavras = PALAVRAS_CHAVE[categoriaAtual.valor] || [];
+          const filtradas = todasManchetes.filter(item => {
+            const texto = ((item.title || '') + ' ' + (item.summary || '')).toLowerCase();
+            return palavras.some(p => texto.includes(p));
+          });
+
+          // ORDENA da mais recente para a mais velha (por data)
+          filtradas.sort((a, b) => new Date(b.pubDate || 0) - new Date(a.pubDate || 0));
+
+          areaConteudo.innerHTML = '';
+
+          if (!filtradas.length) {
+            areaConteudo.append(el('div', { class: 'warn' },
+              'Nenhuma manchete encontrada em "' + categoriaAtual.valor + '" agora.'
+            ));
+            return;
+          }
+
+          // Mostra as 30 mais recentes
+          const lista = el('div', { class: 'headlines' });
+          filtradas.slice(0, 30).forEach((item, idx) =>
+            lista.append(criarLinhaManchete(item, idx, true))
+          );
+          areaConteudo.append(lista);
+        }
+      }
+    }
+
+    // Helper: cria um <span> com um ícone SVG dentro
+    function criarIconeSpan(svg, classe) {
+      const span = document.createElement('span');
+      span.className = classe || '';
+      span.innerHTML = svg;
+      return span;
+    }
+
+
+    /* ============================================================
+       SEÇÃO G — TELA 2: DETALHE DE UM JORNAL (manchetes)
+       ============================================================
+       Quando o usuário clica num jornal, vem para cá.
+       Mostra: nome do jornal, botão "Abrir site oficial" e a
+       lista das últimas manchetes (buscadas via API).
+       ============================================================ */
+    async function mostrarJornal(app, id) {
+      app.innerHTML = '';
+      const jornais = carregarJornais();
+      const jornal = jornais.find(j => j.id === id);
+
+      // Se o id não existe, volta para a tela inicial
+      if (!jornal) { location.hash = '#/'; return; }
+
+      const frame = el('div', { class: 'frame' });
+
+      // Botão "Voltar"
+      frame.append(
+        el('a', { class: 'back', href: '#/' },
+          criarIconeSpan(criarIcone('back'), ''), ' Voltar aos jornais'
+        )
+      );
+
+      // Cabeçalho com logo e nome do jornal
+      const logo = el('div', {
+        class: 'logo',
+        style: 'width:64px;height:64px;flex:0 0 auto;border-radius:50%;background:#fff;border:2px solid hsl(0,0%,90%);overflow:hidden;display:grid;place-items:center;color:var(--cocoa);font-family:Fraunces,serif;font-weight:700;font-size:1.6rem'
+      });
+      const img = el('img', { src: iconeDoSite(jornal.site), alt: jornal.name });
+      img.onerror = () => { logo.textContent = jornal.name.charAt(0); };
+      logo.append(img);
+
+      const cabecalho = el('div', { style: 'display:flex;align-items:center;gap:14px;margin-bottom:12px' });
+      cabecalho.append(
+        logo,
+        el('div', {},
+          el('h1', { class: 'font-title', style: 'margin:0;font-size:clamp(1.6rem,3.6vw,2.6rem);color:var(--cocoa);font-weight:900' }, jornal.name),
+          el('div', { style: 'color:var(--cocoa-soft);font-size:.9rem;margin-top:4px' },
+            (jornal.categories || []).join(' · ')
+          )
+        )
+      );
+      frame.append(cabecalho, el('div', { class: 'divider' }));
+
+      // Botão "Abrir site oficial"
+      frame.append(
+        el('a', { class: 'btn solid', href: jornal.site, target: '_blank', rel: 'noopener noreferrer' },
+          'Abrir site oficial', criarIconeSpan(criarIcone('external'), '')
+        )
+      );
+
+      // Área onde as manchetes vão aparecer (com skeleton enquanto carrega)
+      const areaManchetes = el('div', { style: 'margin-top:22px' });
+      areaManchetes.append(
+        el('div', { class: 'skeleton', style: 'height:80px;margin-bottom:10px' }),
+        el('div', { class: 'skeleton', style: 'height:80px;margin-bottom:10px' }),
+        el('div', { class: 'skeleton', style: 'height:80px' })
+      );
+      frame.append(areaManchetes);
+      app.append(frame);
+
+      // BUSCA AS MANCHETES (chama a API)
+      const resultado = await buscarManchetes(jornal);
+
+      // Limpa os skeletons
+      areaManchetes.innerHTML = '';
+
+      // Se deu erro ou não veio nada, mostra aviso
+      if (!resultado || !resultado.items || !resultado.items.length) {
+        areaManchetes.append(el('div', { class: 'warn' },
+          (resultado && resultado.error)
+            ? resultado.error
+            : 'Não conseguimos carregar as manchetes agora. Visite o site oficial acima.'
+        ));
+        return;
+      }
+
+      // Título "Últimas manchetes"
+      areaManchetes.append(
+        el('h2', { class: 'font-title', style: 'font-size:clamp(1.3rem,3vw,2rem);color:var(--cocoa);margin:0 0 6px;font-weight:900' }, 'Últimas manchetes'),
+        el('div', { class: 'divider' })
+      );
+
+      // Cria a lista de manchetes (mostra as 20 mais recentes)
+      const lista = el('div', { class: 'headlines' });
+      resultado.items.slice(0, 20).forEach((item, idx) =>
+        lista.append(criarLinhaManchete({ ...item, paper: jornal }, idx, false))
+      );
+      areaManchetes.append(lista);
+    }
+
+
+    /* ============================================================
+       SEÇÃO H — A API: BUSCAR MANCHETES VIA RSS2JSON
+       ============================================================
+
+       ESTA É A PARTE MAIS IMPORTANTE DO PROJETO.
+
+       O PROBLEMA:
+         Jornais publicam notícias em formato RSS (um XML).
+         Mas o navegador NÃO consegue ler RSS diretamente, por
+         causa de uma regra de segurança chamada CORS.
+
+       A SOLUÇÃO:
+         Usamos o site "rss2json.com" como INTERMEDIÁRIO:
+           1. Ele acessa o RSS do jornal (XML).
+           2. Converte para JSON (formato que o navegador lê).
+           3. Devolve para o nosso JavaScript.
+
+       O FLUXO:
+         Jornal (RSS/XML) → rss2json (converte) → JSON → nosso código
+
+       POR QUE AS NOTÍCIAS SÃO "AS MAIS RECENTES"?
+         Porque os próprios jornais colocam as notícias novas
+         no TOPO do feed RSS. Então o primeiro item que a API
+         devolve já é a manchete mais recente. A data (pubDate)
+         serve só para ordenar quando misturamos vários jornais.
+       ============================================================ */
+
+    // Cache: guarda resultados já buscados para não repetir a requisição
+    const cache = new Map();
+
+    async function buscarManchetes(jornal) {
+      // 1. Se já buscamos este jornal antes, pega do cache (instantâneo)
+      if (cache.has(jornal.id)) return cache.get(jornal.id);
+
+      try {
+        // 2. Monta a URL da API: endpoint do rss2json + o RSS do jornal
+        //    encodeURIComponent transforma caracteres especiais em código
+        //    seguro para URL (ex: & vira %26)
+        const urlApi = 'https://api.rss2json.com/v1/api.json?rss_url='
+                     + encodeURIComponent(jornal.rss);
+
+        // 3. fetch() = faz a requisição HTTP (igual o navegador faz
+        //    quando você abre um site, mas via JavaScript)
+        const resposta = await fetch(urlApi);
+
+        // 4. Se a resposta não for OK (ex: erro 404), dispara erro
+        if (!resposta.ok) throw new Error('HTTP ' + resposta.status);
+
+        // 5. Converte a resposta em objeto JavaScript (JSON)
+        const dados = await resposta.json();
+
+        // 6. O rss2json devolve { status: 'ok', items: [...] }
+        //    Se o status não for 'ok', o feed falhou
+        if (dados.status !== 'ok') throw new Error(dados.message || 'feed error');
+
+        // 7. Transforma cada item no formato que precisamos:
+        //    pegamos só título, link, resumo (sem HTML) e data
+        const manchetes = (dados.items || []).map(item => ({
+          title:   item.title,                                    // título da notícia
+          link:    item.link,                                     // link para a notícia original
+          summary: limparHTML(item.description || item.content), // resumo limpo
+          pubDate: item.pubDate                                   // data de publicação
+        }));
+
+        // 8. Guarda no cache e retorna
+        const resultado = { items: manchetes };
+        cache.set(jornal.id, resultado);
+        return resultado;
+
+      } catch (erro) {
+        // 9. Se deu qualquer erro (internet caiu, feed inválido),
+        //    retorna uma mensagem amigável em vez de quebrar a página
+        const resultado = {
+          items: [],
+          error: 'Não foi possível carregar o feed de ' + jornal.name + '.'
+        };
+        cache.set(jornal.id, resultado);
+        return resultado;
+      }
+    }
+
+    /*
+      Cria uma linha de manchete (um <a> com título, resumo e data).
+      Cada manchete é um link que abre a notícia original no site
+      do jornal (target="_blank" = abre em nova aba).
+    */
+    function criarLinhaManchete(item, indice, mostrarJornal) {
+      const link = el('a', {
+        class: 'headline',
+        href: item.link,
+        target: '_blank',
+        rel: 'noopener noreferrer',
+        style: 'animation-delay:' + (indice * 35) + 'ms'
+      });
+
+      const linha = el('div', { class: 'title-row' });
+      linha.append(criarIconeSpan(criarIcone('external'), ''));
+
+      const caixa = el('div', { style: 'min-width:0;flex:1' });
+      caixa.append(el('h3', {}, item.title || 'Sem título'));
+      if (item.summary) caixa.append(el('p', {}, item.summary));
+
+      // Metadados: nome do jornal (se aplicável) + data
+      const meta = el('div', { class: 'meta' });
+      if (mostrarJornal && item.paper) {
+        meta.append(el('span', { class: 'paper-tag' }, item.paper.name));
+      }
+      if (item.pubDate) meta.append(document.createTextNode(formatarData(item.pubDate)));
+      if (meta.childNodes.length) caixa.append(meta);
+
+      linha.append(caixa);
+      link.append(linha);
+      return link;
+    }
+
+
+    /* ============================================================
+       SEÇÃO I — TELA 3: PAINEL DO DONO (admin)
+       ============================================================
+       Área protegida por senha onde o dono da cafeteria pode:
+         • Adicionar novos jornais
+         • Remover jornais existentes
+         • Trocar a senha do painel
+       ============================================================ */
+    function mostrarPainel(app) {
+      app.innerHTML = '';
+
+      // Se não está logado, mostra a tela de login
+      if (!estaLogado()) return mostrarLogin(app);
+
+      const jornais = carregarJornais();
+      const frame = el('div', { class: 'frame' });
+
+      frame.append(
+        el('a', { class: 'back', href: '#/' },
+          criarIconeSpan(criarIcone('back'), ''), ' Voltar à página pública'
+        )
+      );
+
+      // Cabeçalho com título e botão "Sair"
+      const cabecalho = el('div', { class: 'admin-header' });
+      cabecalho.append(
+        el('h1', {}, 'Painel do dono'),
+        el('button', { class: 'btn', onclick: () => { fazerLogout(); render(); } },
+          criarIconeSpan(criarIcone('logout'), ''), 'Sair'
+        )
+      );
+      frame.append(cabecalho, el('div', { class: 'divider' }));
+
+      // FORMULÁRIO: Adicionar novo jornal
+      const form = el('form', { class: 'admin-form', onsubmit: aoAdicionar });
+      form.append(
+        el('h2', { class: 'font-title', style: 'margin:0;font-size:1.4rem;color:var(--cocoa);font-weight:900' }, 'Adicionar novo jornal'),
+        criarLinha(
+          criarCampo('name', 'Nome do jornal', 'ex: O Estado de S. Paulo'),
+          criarCampo('site', 'Site oficial', 'https://...')
+        ),
+        criarCampo('rss', 'URL do feed RSS', 'https://.../feed'),
+        criarCheckboxes([])
+      );
+      form.append(
+        el('div', { style: 'display:flex;gap:10px;align-items:center;flex-wrap:wrap' },
+          el('button', { type: 'submit', class: 'btn solid' },
+            criarIconeSpan(criarIcone('plus'), ''), ' Adicionar jornal'
+          ),
+          el('span', { style: 'color:var(--cocoa-soft);font-size:.9rem' },
+            '* o feed precisa ser um RSS válido'
+          )
+        )
+      );
+      frame.append(form);
+
+      // LISTA: Jornais cadastrados (com botão de remover)
+      frame.append(el('h2', { class: 'font-title', style: 'margin:22px 0 8px;font-size:1.4rem;color:var(--cocoa);font-weight:900' }, 'Jornais cadastrados'));
+      const lista = el('div', { class: 'admin-list' });
+      jornais.forEach(j => {
+        const item = el('div', { class: 'admin-item' });
+        const logo = el('div', { class: 'logo-mini' });
+        const img = el('img', { src: iconeDoSite(j.site), alt: j.name });
+        img.onerror = () => { logo.textContent = j.name.charAt(0); };
+        logo.append(img);
+        item.append(
+          logo,
+          el('div', { class: 'meta' },
+            el('div', { class: 'n' }, j.name),
+            el('div', { class: 's' }, j.site),
+            el('div', { style: 'font-size:.75rem;color:hsl(20,28%,60%);margin-top:2px;text-transform:uppercase' },
+              (j.categories || []).join(' · ')
+            )
+          ),
+          el('div', { class: 'actions' },
+            el('button', { class: 'icon-btn danger', title: 'Remover', onclick: () => removerJornal(j.id) },
+              criarIconeSpan(criarIcone('trash'), '')
+            )
+          )
+        );
+        lista.append(item);
+      });
+      if (!jornais.length) lista.append(el('div', { class: 'warn' }, 'Nenhum jornal cadastrado.'));
+      frame.append(lista);
+
+      // FORMULÁRIO: Trocar senha
+      frame.append(el('h2', { class: 'font-title', style: 'margin:26px 0 8px;font-size:1.4rem;color:var(--cocoa);font-weight:900' }, 'Trocar senha do painel'));
+      const formSenha = el('form', { class: 'admin-form', onsubmit: aoTrocarSenha });
+      formSenha.append(
+        criarLinha(
+          criarCampo('curp', 'Senha atual', '••••', false, 'password'),
+          criarCampo('newp', 'Nova senha', 'mínimo 4 caracteres', false, 'password')
+        ),
+        el('div', {}, el('button', { type: 'submit', class: 'btn' },
+          criarIconeSpan(criarIcone('key'), ''), ' Salvar nova senha'
+        ))
+      );
+      frame.append(formSenha);
+
+      app.append(frame);
+
+      // --- Funções internas do painel ---
+
+      // Quando o formulário de adicionar é enviado
+      function aoAdicionar(ev) {
+        ev.preventDefault();  // impede o recarregamento da página
+        const dados = new FormData(form);
+        const nome = (dados.get('name') || '').toString().trim();
+        const site = (dados.get('site') || '').toString().trim();
+        const rss  = (dados.get('rss')  || '').toString().trim();
+        const cats = $$('.checkboxes input[type=checkbox]:checked', form).map(c => c.value);
+
+        if (!nome || !site || !rss) { alert('Preencha nome, site e RSS.'); return; }
+
+        const lista = carregarJornais();
+        const id = criarSlug(nome) + '-' + Math.random().toString(36).slice(2, 6);
+        lista.push({ id, name: nome, site, rss, categories: cats.length ? cats : ['Geral'] });
+        salvarJornais(lista);
+        mostrarPainel(app);  // recarrega o painel
+      }
+
+      // Quando o botão de remover é clicado
+      function removerJornal(id) {
+        if (!confirm('Remover este jornal?')) return;
+        const lista = carregarJornais().filter(j => j.id !== id);
+        salvarJornais(lista);
+        mostrarPainel(app);
+      }
+
+      // Quando o formulário de trocar senha é enviado
+      function aoTrocarSenha(ev) {
+        ev.preventDefault();
+        const dados = new FormData(formSenha);
+        const atual = (dados.get('curp') || '').toString();
+        const nova  = (dados.get('newp') || '').toString();
+
+        if (atual !== obterSenha()) { alert('Senha atual incorreta.'); return; }
+        if (nova.length < 4) { alert('A nova senha precisa ter no mínimo 4 caracteres.'); return; }
+
+        definirSenha(nova);
+        alert('Senha atualizada.');
+        formSenha.reset();
+      }
+    }
+
+    // Cria um campo de formulário (label + input)
+    function criarCampo(nome, rotulo, placeholder, required, tipo = 'text') {
+      const wrap = el('div', {});
+      wrap.append(
+        el('label', { for: nome }, rotulo),
+        el('input', { id: nome, name: nome, type: tipo, placeholder, autocomplete: 'off' })
+      );
+      return wrap;
+    }
+
+    // Cria uma linha com 2 campos lado a lado (no desktop)
+    function criarLinha(...filhos) {
+      const r = el('div', { class: 'row two' });
+      filhos.forEach(f => r.append(f));
+      return r;
+    }
+
+    // Cria as checkboxes de categoria
+    function criarCheckboxes(selecionados) {
+      const wrap = el('div', {});
+      wrap.append(el('label', {}, 'Categorias que este jornal cobre'));
+      const box = el('div', { class: 'checkboxes' });
+      ['Geral', 'Política', 'Economia', 'Esportes'].forEach(cat => {
+        const marcado = selecionados.includes(cat);
+        const lab = el('label', { class: marcado ? 'checked' : '' });
+        const inp = el('input', { type: 'checkbox', value: cat });
+        if (marcado) inp.checked = true;
+        inp.addEventListener('change', () => lab.classList.toggle('checked', inp.checked));
+        lab.append(inp, ' ' + cat);
+        box.append(lab);
+      });
+      wrap.append(box);
+      return wrap;
+    }
+
+
+    /* ============================================================
+       SEÇÃO J — TELA DE LOGIN (entrada do painel admin)
+       ============================================================ */
+    function mostrarLogin(app) {
+      app.innerHTML = '';
+      const frame = el('div', { class: 'frame', style: 'max-width:460px;margin:0 auto' });
+
+      frame.append(
+        el('a', { class: 'back', href: '#/' },
+          criarIconeSpan(criarIcone('back'), ''), ' Voltar à página pública'
+        ),
+        el('h1', { class: 'font-title', style: 'margin:6px 0 0;font-size:clamp(1.8rem,3.6vw,2.4rem);color:var(--cocoa);font-weight:900' }, 'Entrar no painel'),
+        el('p', { style: 'margin:4px 0 18px;color:var(--cocoa-soft)' }, 'Área exclusiva do dono da cafeteria.')
+      );
+
+      const form = el('form', { class: 'admin-form', onsubmit: aoEntrar });
+      form.append(
+        criarCampo('pass', 'Senha do painel', '••••••', true, 'password'),
+        el('button', { type: 'submit', class: 'btn solid' },
+          criarIconeSpan(criarIcone('key'), ''), ' Entrar'
+        )
+      );
+      frame.append(form);
+
+      // Dica com a senha padrão
+      frame.append(el('p', { style: 'margin-top:14px;font-size:.85rem;color:hsl(20,28%,60%)' },
+        'Senha padrão: ',
+        el('code', { style: 'background:var(--pebble);padding:2px 6px;border-radius:6px;color:var(--cocoa)' }, SENHA_PADRAO),
+        ' — troque em "Trocar senha" após entrar.'
+      ));
+
+      app.append(frame);
+      setTimeout(() => $('#pass', form)?.focus(), 50);  // foca no campo de senha
+
+      function aoEntrar(ev) {
+        ev.preventDefault();
+        const dados = new FormData(form);
+        const senha = (dados.get('pass') || '').toString();
+        if (fazerLogin(senha)) {
+          render();  // recarrega a página (agora vai mostrar o painel)
+        } else {
+          alert('Senha incorreta.');
+        }
+      }
+    }
+  </script>
+</body>
+</html>
