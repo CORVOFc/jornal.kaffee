@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Kaffe Für Alle — Cafeteria & Leitura</title>
+
+  <!-- ===== FONTES ===== -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Poppins:wght@600;700&display=swap" rel="stylesheet" />
+
+  <!-- ===== CSS EXTERNO ===== -->
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ===== CABEÇALHO FIXO ===== -->
+  <header id="compact-header" class="compact-header">
+    <div class="compact-header-inner">
+      <a href="#/" class="compact-brand">
+        <span class="compact-logo-mark">K</span>
+        <span>Kaffe Für Alle</span>
+      </a>
+      <nav class="compact-nav">
+        <button type="button" onclick="filtrarPorCategoria('Economia')">Economia</button>
+        <button type="button" onclick="filtrarPorCategoria('Tecnologia')">Tecnologia</button>
+        <button type="button" onclick="toggleModoLeitura()">📖 Ler</button>
+        <a href="#/admin">Painel</a>
+      </nav>
+    </div>
+  </header>
+
+  <!-- ===== CONTEÚDO DINÂMICO ===== -->
+  <div id="app" class="site-shell"></div>
+
+  <!-- ===== BOTÃO VOLTAR AO TOPO ===== -->
+  <button type="button" id="back-to-top" class="back-to-top hidden" onclick="window.scrollTo({top:0, behavior:'smooth'})" aria-label="Voltar ao topo">
+    ↑
+  </button>
+
+  <!-- ===== SCRIPT EXTERNO ===== -->
+  <script src="script.js"></script>
+</body>
+</html>
